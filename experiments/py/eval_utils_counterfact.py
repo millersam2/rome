@@ -40,6 +40,9 @@ def compute_rewrite_quality_counterfact(
     :return: Dictionary containing rewriting metrics
     """
 
+    # test
+    # print('do i get here?')
+
     # First, unpack rewrite evaluation record.
     subject, target_new, target_true = (
         record["requested_rewrite"][x] for x in ["subject", "target_new", "target_true"]
@@ -49,6 +52,9 @@ def compute_rewrite_quality_counterfact(
     neighborhood_prompts = record["neighborhood_prompts"]
     attribute_prompts = record["attribute_prompts"]
     generation_prompts = record["generation_prompts"]
+
+    # test
+    # print("what about here tho?")
 
     # Form a list of lists of prefixes to test.
     prob_prompts = [
@@ -208,6 +214,7 @@ def compute_n_gram_entropy(sentence, ns=None, weights=None, agg="arith"):
 
 
 def compute_freq(sentence, n=2):
+    # breaks here
     tokens = nltk.word_tokenize(sentence)
     ngrams = nltk.ngrams(tokens, n)
     return nltk.FreqDist(ngrams)

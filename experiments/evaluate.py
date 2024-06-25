@@ -127,6 +127,10 @@ def main(
 
             # Execute evaluation suite
             start = time()
+
+            # testing 
+            print('break after here?')
+
             metrics = {
                 "case_id": case_id,
                 "requested_rewrite": record["requested_rewrite"],
