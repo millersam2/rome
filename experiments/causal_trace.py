@@ -24,6 +24,7 @@ from util.runningstats import Covariance, tally
 
 
 def main():
+    # parses user provided command-line arguments
     parser = argparse.ArgumentParser(description="Causal Tracing")
 
     def aa(*args, **kwargs):
@@ -55,6 +56,7 @@ def main():
     aa("--replace", default=0, type=int)
     args = parser.parse_args()
 
+    # sets up paths/directories to store results and heatmap visualizations
     modeldir = f'r{args.replace}_{args.model_name.replace("/", "_")}'
     modeldir = f"n{args.noise_level}_" + modeldir
     output_dir = args.output_dir.format(model_name=modeldir)
@@ -63,23 +65,46 @@ def main():
     os.makedirs(result_dir, exist_ok=True)
     os.makedirs(pdf_dir, exist_ok=True)
 
+    # modify the datatype of pytorch tensors in order to accomodate
+    # for the large parameter size of EleutherAI/gpt-neox-20b
     # Half precision to let the 20b model fit.
     torch_dtype = torch.float16 if "20b" in args.model_name else None
 
+    # download/hold onto the model and tokenizer used in the experiment
     mt = ModelAndTokenizer(args.model_name, torch_dtype=torch_dtype)
 
+    # in the case where the use has provided a fact dataset, load
+    # that dataset. Otherwise downloads/loads the known_1000.json dataset
     if args.fact_file is None:
         knowns = KnownsDataset(DATA_DIR)
     else:
         with open(args.fact_file) as f:
             knowns = json.load(f)
 
+    # # testing
+    # # knowns.data is a list of dictionaries, which correspond to the input tuples
+    # # in the known_1000.json dataset
+    # print(knowns)
+    # print('first entry in knowns')
+    # print(knowns[0])
+    # print('last entry in knowns')
+    # print(knowns[-1])
+    # keys of entry in knowns: 'known_id', 'subject', 'attribute', 'template', 'prediction', 
+    #                           'prompt', 'relation_id'
+
+
+    # set noise level, which is used for corrupting the subject portion
+    # of the prompt 
     noise_level = args.noise_level
     uniform_noise = False
+
+    # computes the noise level to be used on the subject tokens' 
+    # embeddings in the corrupted run
     if isinstance(noise_level, str):
         if noise_level.startswith("s"):
             # Automatic spherical gaussian
             factor = float(noise_level[1:]) if len(noise_level) > 1 else 1.0
+            # TODO - understanding/explain what collect_embedding_std does
             noise_level = factor * collect_embedding_std(
                 mt, [k["subject"] for k in knowns]
             )
@@ -96,12 +121,27 @@ def main():
             uniform_noise = True
             noise_level = float(noise_level[1:])
 
+    # iterates through each of the facts in the dataset
+    # note: tdqm(knowns) takes as input an iterable and returns an identical
+    # iterable that produces a dynamically updating progress bar each
+    # time a new value from the iterable is requested
     for knowledge in tqdm(knowns):
         known_id = knowledge["known_id"]
+
+        # TODO
+
         for kind in None, "mlp", "attn":
             kind_suffix = f"_{kind}" if kind else ""
             filename = f"{result_dir}/knowledge_{known_id}{kind_suffix}.npz"
+
+            # test
+            # print(filename)
+
             if not os.path.isfile(filename):
+                
+                # # testing
+                # print(knowledge['prompt'])
+
                 result = calculate_hidden_flow(
                     mt,
                     knowledge["prompt"],
@@ -120,7 +160,8 @@ def main():
             else:
                 numpy_result = numpy.load(filename, allow_pickle=True)
             if not numpy_result["correct_prediction"]:
-                tqdm.write(f"Skipping {knowledge['prompt']}")
+                # essentially a print that doesn't overlap the progress bars
+                tqdm.write(f"Skipping {knowledge['prompt']}") 
                 continue
             plot_result = dict(numpy_result)
             plot_result["kind"] = kind
@@ -129,6 +170,7 @@ def main():
                 continue
             plot_trace_heatmap(plot_result, savepdf=pdfname)
 
+# ---------------------------------------------------- end of main -------------------------------------------------------------#
 
 def trace_with_patch(
     model,  # The model
@@ -293,7 +335,8 @@ def trace_with_repatch(
 
     return probs
 
-
+# TODO - important function
+# Q: Why 10 samples?
 def calculate_hidden_flow(
     mt,
     prompt,
@@ -311,6 +354,12 @@ def calculate_hidden_flow(
     Runs causal tracing over every token/layer combination in the network
     and returns a dictionary numerically summarizing the results.
     """
+
+    # # testing
+    # print(prompt)
+    # print([prompt] * (samples + 1))
+
+    # passes a list of prompts of length sample + 1
     inp = make_inputs(mt.tokenizer, [prompt] * (samples + 1))
     with torch.no_grad():
         answer_t, base_score = [d[0] for d in predict_from_input(mt.model, inp)]
@@ -325,7 +374,7 @@ def calculate_hidden_flow(
     low_score = trace_with_patch(
         mt.model, inp, [], answer_t, e_range, noise=noise, uniform_noise=uniform_noise
     ).item()
-    if not kind:
+    if not kind: # kind == None
         differences = trace_important_states(
             mt.model,
             mt.num_layers,
@@ -337,7 +386,7 @@ def calculate_hidden_flow(
             replace=replace,
             token_range=token_range,
         )
-    else:
+    else: # kind == mlp or attn
         differences = trace_important_window(
             mt.model,
             mt.num_layers,
@@ -485,6 +534,11 @@ class ModelAndTokenizer:
 
 
 def layername(model, num, kind=None):
+    # # testing
+    # print(model)
+    # print(dir(model))
+    # exit(1)
+
     if hasattr(model, "transformer"):
         if kind == "embed":
             return "transformer.wte"
@@ -529,7 +583,7 @@ def plot_hidden_flow(
     )
     plot_trace_heatmap(result, savepdf)
 
-
+# note: "findfont: Font family 'Times New Roman' not found." occurs here
 def plot_trace_heatmap(result, savepdf=None, title=None, xlabel=None, modelname=None):
     differences = result["scores"]
     low_score = result["low_score"]
@@ -544,7 +598,10 @@ def plot_trace_heatmap(result, savepdf=None, title=None, xlabel=None, modelname=
     for i in range(*result["subject_range"]):
         labels[i] = labels[i] + "*"
 
-    with plt.rc_context(rc={"font.family": "Times New Roman"}):
+    # fix for "findfont: Font family 'Times New Roman' not found." warning
+    # https://stackoverflow.com/questions/42097053/matplotlib-cannot-find-basic-fonts
+    # with plt.rc_context(rc={"font.family": "Times New Roman"}):
+    with plt.rc_context(rc={"font.family": "DeJavu serif", "font.serif" : ["Times New Roman"]}):
         fig, ax = plt.subplots(figsize=(3.5, 2), dpi=200)
         h = ax.pcolor(
             differences,
@@ -589,16 +646,56 @@ def plot_all_flow(mt, prompt, subject=None):
 
 
 # Utilities for dealing with tokens
+
+# computes token encodings and their associated attention_masks of
+# provided prompts
+# note: in the case where multiple prompts are provided, it will also
+# pad all of the token encodings and attention_masks to the length of
+# the largest token encoding (padding added to the left)
+# returns a dictionary with the associated token encodings and 
+# attention_masks as 2-dimensional tensors
 def make_inputs(tokenizer, prompts, device="cuda"):
+    # converts the natural language prompts into sequences of
+    # tokens, and then converts these tokens into integers(ids)
+    # based on a vocabulary
     token_lists = [tokenizer.encode(p) for p in prompts]
+
+    # # testing
+    # print(prompts)
+    # print(token_lists)
+    # for t in token_lists:
+    #     print(t)
+    # exit(1)
+
     maxlen = max(len(t) for t in token_lists)
+
+    # # testing
+    # print(maxlen)
+    # exit(1)
+
     if "[PAD]" in tokenizer.all_special_tokens:
         pad_id = tokenizer.all_special_ids[tokenizer.all_special_tokens.index("[PAD]")]
     else:
         pad_id = 0
+    # padding is applied to the left of the token encoding
     input_ids = [[pad_id] * (maxlen - len(t)) + t for t in token_lists]
     # position_ids = [[0] * (maxlen - len(t)) + list(range(len(t))) for t in token_lists]
+    
+    # Q: What is the purpose of attention_mask here?
+    # At a glance, it just looks like it shows which tokens are either padding tokens,
+    # indicated with a 0, or not a padding token, indicated with a 1
     attention_mask = [[0] * (maxlen - len(t)) + [1] * len(t) for t in token_lists]
+
+    # # testing
+    # print(input_ids)
+    # print(attention_mask)
+    # # as an example
+    # pad_test = [pad_id] * 2 + token_lists[0]
+    # print(pad_test)
+
+    # exit(1)
+
+
     return dict(
         input_ids=torch.tensor(input_ids).to(device),
         #    position_ids=torch.tensor(position_ids).to(device),
@@ -636,22 +733,33 @@ def predict_token(mt, prompts, return_p=False):
         result = (result, p)
     return result
 
-
 def predict_from_input(model, inp):
     out = model(**inp)["logits"]
     probs = torch.softmax(out[:, -1], dim=1)
+    # returns p = tensor of max probs for each input and preds returns 1-D tensor
+    # containing the indicies of the max probabilities for each input
     p, preds = torch.max(probs, dim=1)
     return preds, p
 
-
+# computes the standard deviation of the embeddings of the subject tokens
+# passed as the argument subjects
 def collect_embedding_std(mt, subjects):
+    # stores all of the subjects' embeddings
     alldata = []
+
     for s in subjects:
+        # tokenize each subject (Natural Language -> Integers)
+        # returns a dict with keys: 'input_ids' and 'attention_mask'
         inp = make_inputs(mt.tokenizer, [s])
+
+        # object used to retain the output of the embedding layer
         with nethook.Trace(mt.model, layername(mt.model, 0, "embed")) as t:
+            # perform one forward pass with the input
             mt.model(**inp)
             alldata.append(t.output[0])
+    # returns a tensor of dimensions: [# of tokens in subjects, embedding_size]
     alldata = torch.cat(alldata)
+    # computes the std treating each token embedding component as a sample
     noise_level = alldata.std().item()
     return noise_level
 

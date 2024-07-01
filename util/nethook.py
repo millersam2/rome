@@ -80,6 +80,10 @@ class Trace(contextlib.AbstractContextManager):
                 output = invoke_with_optional_args(
                     edit_output, output=output, layer=self.layer
                 )
+
+                # # testing
+                # print(output)
+                
             if retain_output:
                 retainer.output = recursive_copy(
                     output, clone=clone, detach=detach, retain_grad=retain_grad
