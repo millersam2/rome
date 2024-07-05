@@ -532,13 +532,8 @@ class ModelAndTokenizer:
             f"tokenizer: {type(self.tokenizer).__name__})"
         )
 
-
+# note: would likely need to be added onto to incorporate additional models
 def layername(model, num, kind=None):
-    # # testing
-    # print(model)
-    # print(dir(model))
-    # exit(1)
-
     if hasattr(model, "transformer"):
         if kind == "embed":
             return "transformer.wte"
@@ -710,9 +705,17 @@ def decode_tokens(tokenizer, token_array):
 
 
 def find_token_range(tokenizer, token_array, substring):
+    # get actual tokens
     toks = decode_tokens(tokenizer, token_array)
+
+    # recreate the prompt based on the passed in token_array
     whole_string = "".join(toks)
+
+    # get starting index of the subject
     char_loc = whole_string.index(substring)
+
+    # get the index of the first token of the subject and get the index
+    # of the token that directly follows the last token of the subject
     loc = 0
     tok_start, tok_end = None, None
     for i, t in enumerate(toks):
@@ -734,11 +737,23 @@ def predict_token(mt, prompts, return_p=False):
     return result
 
 def predict_from_input(model, inp):
+    # performs forward pass and stores the resulting logits vectors (tensors)
+    # in a logits vector, each element corresponds to the score of a unique word in the vocabulary
+    # out.shape = [# of prompt copies, # of tokens in each prompt, # of words in vocabulary]
     out = model(**inp)["logits"]
+
+    # slicing interpretation: get the logits vector for the last token of each prompt copy
+    # out[:, -1].shape = [# of prompt copies, # of words in vocabulary]
+    # applies the softmax function over each prompt's logits vector
+    # probs.shape = [# of prompt copies, # of words in vocabulary]
     probs = torch.softmax(out[:, -1], dim=1)
+
     # returns p = tensor of max probs for each input and preds returns 1-D tensor
     # containing the indicies of the max probabilities for each input
+    # p.shape and preds.shape = [# of prompt copies]
     p, preds = torch.max(probs, dim=1)
+    
+    # returns tuple (preds, p)
     return preds, p
 
 # computes the standard deviation of the embeddings of the subject tokens

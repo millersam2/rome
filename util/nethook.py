@@ -63,10 +63,18 @@ class Trace(contextlib.AbstractContextManager):
         Method to replace a forward method with a closure that
         intercepts the call, and tracks the hook so that it can be reverted.
         """
+
+        # # for testing
+        # print(module)
+        # print(layer)
+
         retainer = self
         self.layer = layer
         if layer is not None:
             module = get_module(module, layer)
+
+        # # for testing
+        # print(module)
 
         def retain_hook(m, inputs, output):
             if retain_input:
@@ -80,9 +88,6 @@ class Trace(contextlib.AbstractContextManager):
                 output = invoke_with_optional_args(
                     edit_output, output=output, layer=self.layer
                 )
-
-                # # testing
-                # print(output)
                 
             if retain_output:
                 retainer.output = recursive_copy(
@@ -157,6 +162,9 @@ class TraceDict(OrderedDict, contextlib.AbstractContextManager):
                     seen.add(item)
                     prev = item
             yield True, prev
+
+        # # for testing
+        # print(layers)
 
         for is_last, layer in flag_last_unseen(layers):
             self[layer] = Trace(
