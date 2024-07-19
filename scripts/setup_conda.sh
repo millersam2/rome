@@ -2,6 +2,7 @@
 
 # Start from directory of script
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
 cd $SCRIPT_DIR
 
 # Detect operating system
@@ -31,7 +32,9 @@ else
   echo "Found CONDA_HOME=${CONDA_HOME}."
 fi
 
-RECIPE=${RECIPE:-rome}
+# RECIPE=${RECIPE:-rome}
+# for testing
+RECIPE=${RECIPE:-rome_old}
 ENV_NAME="${ENV_NAME:-${RECIPE}}"
 echo "Creating conda environment ${ENV_NAME}..."
 

@@ -335,32 +335,38 @@ def trace_with_repatch(
 
     return probs
 
-# TODO - important function
-# Q: Why 10 samples?
+# note: this function operates very similarly with the calculate_hidden_flow function in causal_trace.ipynb.
+#       for commentary on shared input arguments/behaviors/outputted 'results' dictionary key-value pairs
+#       reference the comments in that function.
+#       One primary difference is that this calculate_hidden_flow takes two additional input arguments:
+#       'uniform_noise' (of type bool) and 'expect' (of type string).
+#
+#       If the predicted object token from the clean run does not match the actual correct object token from the 
+#       dataset, then the corrupted run and corruption-with-restoration runs are not performed. The resulting
+#       output will be a dictionary with one key-value pair (correct_prediction : False).
+#       In other cases, the output 'results' dictionary will contain its usual key-value pairs along with 
+#       the additional key-value pair (correct_prediction : True). 
 def calculate_hidden_flow(
-    mt,
+    mt, 
     prompt,
     subject,
     samples=10,
     noise=0.1,
     token_range=None,
-    uniform_noise=False,
+    uniform_noise=False, # specifies whether to utilize samples from the uniform distribution[-1, 1) for subject corruption
     replace=False,
     window=10,
     kind=None,
-    expect=None,
+    expect=None, # the actual correct object token from the fact dataset (not the object token predicted by a clean run)
 ):
     """
     Runs causal tracing over every token/layer combination in the network
     and returns a dictionary numerically summarizing the results.
     """
-
-    # # testing
-    # print(prompt)
-    # print([prompt] * (samples + 1))
-
-    # passes a list of prompts of length sample + 1
+    
     inp = make_inputs(mt.tokenizer, [prompt] * (samples + 1))
+
+    # clean run
     with torch.no_grad():
         answer_t, base_score = [d[0] for d in predict_from_input(mt.model, inp)]
     [answer] = decode_tokens(mt.tokenizer, [answer_t])
